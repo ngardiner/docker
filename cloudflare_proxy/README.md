@@ -36,7 +36,10 @@ TUNNEL_ROUTE_MODE=tcp  # Options: tcp, access
 ### Create a new Cloudflare Tunnel
 ```cloudflared tunnel create <tunnel-name>```
 
-Grab the credentials and 
+Grab the credentials and add them to the ```.env``` file.
+
+### Build the Docker container
+```docker-compose build```
 
 ### Deploy the Docker container
 ```docker-compose up -d```

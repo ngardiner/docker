@@ -56,6 +56,18 @@ fi
 # Enhanced monitoring and restart function
 monitor_processes() {
     while true; do
+	# Check if the reload flag is set
+	if [ -f /etc/haproxy/.reload ]; then
+	    rm /etc/haproxy/.reload
+	    echo "Reloading haproxy"
+	    pkill -HUP haproxy
+	fi
+        if [ -f /etc/cloudflared/.reload ]; then
+	    rm /etc/cloudflared/.reload
+	    echo "Reloading cloudflared"
+	    pkill -HUP cloudflared
+	fi
+
         # Check if processes are running
         if ! pgrep cloudflared > /dev/null; then
             echo "Cloudflared process died. Restarting..."
