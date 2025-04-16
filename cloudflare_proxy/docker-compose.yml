@@ -1,0 +1,24 @@
+version: '3.8'
+services:
+  tunnel-proxy:
+    build: .
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - ACCOUNT_TAG
+      - CLOUDFLARE_HOSTNAMES
+      - LOCAL_PORTS
+      - TUNNEL_ROUTE_MODE
+      - TUNNEL_ID
+      - TUNNEL_SECRET
+    volumes:
+      - ./haproxy:/custom-haproxy.cfg
+      - ./cloudflared:/etc/cloudflared
+    healthcheck:
+      test: |
+        (pgrep cloudflared && pgrep haproxy) || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
