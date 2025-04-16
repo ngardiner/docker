@@ -13,7 +13,7 @@ services:
       - TUNNEL_ID
       - TUNNEL_SECRET
     volumes:
-      - ./haproxy:/custom-haproxy.cfg
+      - ./haproxy:/etc/haproxy.cfg
       - ./cloudflared:/etc/cloudflared
     healthcheck:
       test: |
