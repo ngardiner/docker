@@ -44,3 +44,11 @@ Grab the credentials and add them to the ```.env``` file.
 ### Deploy the Docker container
 ```docker-compose up -d```
 
+# Updating Configuration
+
+Configurations for cloudflared and haproxy are stored within the respective config directories.
+
+Once you have updated the configurations, you can trigger a reload of the service with the following command, whilst inside the configuration directory for that service:
+
+```touch .reload```
+
