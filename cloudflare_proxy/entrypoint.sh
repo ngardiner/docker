@@ -29,8 +29,28 @@ EOF
 fi
 
 # Custom HAProxy config
-if [ -f "/custom-haproxy.cfg" ]; then
-    cp /custom-haproxy.cfg /etc/haproxy/haproxy.cfg
+if [ ! -f "/etc/haproxy/haproxy.cfg" ] || [ ! -s "/etc/haproxy/haproxy.cfg" ]; then
+	    cat > /etc/haproxy/haproxy.cfg << EOF
+global
+    log 127.0.0.1 local0
+    maxconn 4096
+    user haproxy
+    group haproxy
+    daemon
+
+defaults
+    log     global
+    mode    tcp
+    option  tcplog
+    option  dontlognull
+    retries 3
+    maxconn 2000
+    timeout connect 5s
+    timeout client  30s
+    timeout server  30s
+
+# Add your backend configurations here
+EOF
 fi
 
 # Enhanced monitoring and restart function

@@ -28,9 +28,6 @@ COPY entrypoint.sh /entrypoint.sh
 # Make scripts executable
 RUN chmod +x /app/tunnel-manager.sh /entrypoint.sh
 
-# Default HAProxy config
-COPY default-haproxy.cfg /etc/haproxy/haproxy.cfg
-
 # Environment variables for configuration
 ENV ACCOUNT_TAG=""
 ENV TUNNEL_ID=""
