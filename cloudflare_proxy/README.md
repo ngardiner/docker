@@ -30,6 +30,7 @@ TUNNEL_SECRET=your-tunnel-secret
 CLOUDFLARE_HOSTNAMES=service1.example.com,service2.example.com
 LOCAL_PORTS=8080,9090
 TUNNEL_ROUTE_MODE=tcp  # Options: tcp, access
+```
 
 ## Getting Started
 
@@ -44,7 +45,7 @@ Grab the credentials and add them to the ```.env``` file.
 ### Deploy the Docker container
 ```docker-compose up -d```
 
-# Updating Configuration
+### Updating Configuration
 
 Configurations for cloudflared and haproxy are stored within the respective config directories.
 
@@ -52,3 +53,10 @@ Once you have updated the configurations, you can trigger a reload of the servic
 
 ```touch .reload```
 
+## Uses
+
+### Global Load Balancer
+
+Cloudflare tunnels allow up to 25 tunnel replicas (which are effectively multiple tunnel instances for the same tunnel ID). 
+
+Using this docker container, you can deploy multiple instances of the same endpoint in multiple locations. Cloudflare perform least-path routing to get you to the closest tunnel endpoint.
