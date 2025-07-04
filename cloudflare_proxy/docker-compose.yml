@@ -12,12 +12,38 @@ services:
       - TUNNEL_ROUTE_MODE
       - TUNNEL_ID
       - TUNNEL_SECRET
+      - TAILSCALE_AUTHKEY
+      - TAILSCALE_HOSTNAME
+      - TAILSCALE_ADVERTISE_ROUTES
+      - TAILSCALE_ACCEPT_ROUTES
+      - TAILSCALE_ACCEPT_DNS
+      - TAILSCALE_ENABLE
+      - PROXY_MODE
+      - HAPROXY_ENABLE
     volumes:
       - ./haproxy:/etc/haproxy
       - ./cloudflared:/etc/cloudflared
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
     healthcheck:
       test: |
-        (pgrep cloudflared && pgrep haproxy) || exit 1
+        # Check HAProxy if enabled
+        if [ "$HAPROXY_ENABLE" = "true" ]; then
+          pgrep haproxy > /dev/null || exit 1
+        fi
+        
+        # Check services based on proxy mode
+        if [ "$PROXY_MODE" = "cloudflare" ] || [ "$PROXY_MODE" = "hybrid" ]; then
+          pgrep cloudflared > /dev/null || exit 1
+        fi
+        
+        if [ "$TAILSCALE_ENABLE" = "true" ]; then
+          pgrep tailscaled > /dev/null || exit 1
+        fi
       interval: 30s
       timeout: 10s
       retries: 3
