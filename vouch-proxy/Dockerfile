@@ -1,5 +1,5 @@
 # Multi-stage build for vouch-proxy with ARM support
-FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
