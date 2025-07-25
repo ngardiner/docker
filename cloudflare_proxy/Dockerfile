@@ -10,22 +10,25 @@ RUN apk add --no-cache \
     iptables \
     ca-certificates
 
+# Use Docker's built-in platform arguments
+ARG TARGETARCH
+
 # Download Cloudflared binary
-RUN ARCH=$(uname -m) && \
-    case "$ARCH" in \
-      x86_64) CLOUDFLARED_ARCH=amd64 ;; \
-      aarch64) CLOUDFLARED_ARCH=arm64 ;; \
-      *) echo "Unsupported architecture" && exit 1 ;; \
+RUN case "$TARGETARCH" in \
+      amd64) CLOUDFLARED_ARCH=amd64 ;; \
+      arm64) CLOUDFLARED_ARCH=arm64 ;; \
+      arm) CLOUDFLARED_ARCH=arm ;; \
+      *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
     esac && \
     curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CLOUDFLARED_ARCH} -o /usr/local/bin/cloudflared && \
     chmod +x /usr/local/bin/cloudflared
 
 # Download Tailscale binary
-RUN ARCH=$(uname -m) && \
-    case "$ARCH" in \
-      x86_64) TAILSCALE_ARCH=amd64 ;; \
-      aarch64) TAILSCALE_ARCH=arm64 ;; \
-      *) echo "Unsupported architecture" && exit 1 ;; \
+RUN case "$TARGETARCH" in \
+      amd64) TAILSCALE_ARCH=amd64 ;; \
+      arm64) TAILSCALE_ARCH=arm64 ;; \
+      arm) TAILSCALE_ARCH=arm ;; \
+      *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
     esac && \
     curl -fsSL https://pkgs.tailscale.com/stable/tailscale_latest_linux_${TAILSCALE_ARCH}.tgz | tar xzf - --strip-components=1 -C /usr/local/bin/ && \
     chmod +x /usr/local/bin/tailscale /usr/local/bin/tailscaled
