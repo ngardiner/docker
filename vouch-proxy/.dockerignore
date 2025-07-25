@@ -1,0 +1,29 @@
+# Git files
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Build scripts
+build.sh
+
+# CI/CD files
+.github
+.gitlab-ci.yml
+
+# Temporary files
+tmp_*
+*.tmp
+*.log
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

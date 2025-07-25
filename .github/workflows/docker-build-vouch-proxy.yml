@@ -1,0 +1,158 @@
+name: Build and Push Vouch Proxy Docker Images
+
+on:
+  push:
+    branches: 
+      - 'main'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - 'main'
+
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  IMAGE_NAME: vouch-proxy
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64,amd64,arm
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Determine version and vouch version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+            VERSION_TAG="${{ github.ref_name }}"
+            VOUCH_VERSION="${{ github.ref_name }}"
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            VERSION_TAG="latest"
+            VOUCH_VERSION="latest"
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          else
+            VERSION_TAG="${{ github.ref_name }}"
+            VOUCH_VERSION="latest"
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+          echo "version_tag=$VERSION_TAG" >> $GITHUB_OUTPUT
+          echo "vouch_version=$VOUCH_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: vouch-proxy
+          file: vouch-proxy/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VOUCH_VERSION=${{ steps.version.outputs.vouch_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.version.outputs.is_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: false
+          body: |
+            ## Vouch Proxy Docker Image Release ${{ github.ref_name }}
+            
+            This release provides multi-architecture Docker images for vouch-proxy.
+            
+            ### Supported Architectures
+            - linux/amd64
+            - linux/arm64  
+            - linux/arm/v7
+            
+            ### Docker Images
+            - `${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}`
+            - `${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest` (for latest release)
+            
+            ### Usage
+            ```bash
+            docker run -p 9090:9090 ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ```
+            
+            Built from vouch-proxy version: ${{ github.ref_name }}
+            
+            ### Quick Start
+            ```bash
+            # Pull the image
+            docker pull ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            
+            # Run with default configuration
+            docker run -p 9090:9090 ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            
+            # Run with custom config volume
+            docker run -p 9090:9090 -v /path/to/config:/config ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }} -config /config/config.yml
+            ```
+
+  # Test build job for PRs and feature branches
+  test-build:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v'))
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64,amd64,arm
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Test build (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: vouch-proxy
+          file: vouch-proxy/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: false
+          tags: test-vouch-proxy:${{ github.sha }}
+          build-args: |
+            VOUCH_VERSION=latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
