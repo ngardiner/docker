@@ -5,19 +5,19 @@ on:
     branches: 
       - 'main'
     paths:
-      - 'cloudflare_proxy/**'
+      - 'cloudflare_tunnel_creator/**'
     tags:
       - 'v*'
   pull_request:
     branches:
       - 'main'
     paths:
-      - 'cloudflare_proxy/**'
+      - 'cloudflare_tunnel_creator/**'
 
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-  IMAGE_NAME: cloudflared-tunnel-proxy
+  IMAGE_NAME: cloudflare-tunnel-creator
 
 jobs:
   docker-build:
@@ -60,7 +60,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: cloudflare_proxy
+          context: cloudflare_tunnel_creator
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -74,4 +74,3 @@ jobs:
         with:
           draft: false
           prerelease: false
-

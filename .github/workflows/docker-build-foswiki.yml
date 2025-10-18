@@ -4,11 +4,15 @@ on:
   push:
     branches: 
       - 'main'
+    paths:
+      - 'foswiki/**'
     tags:
       - 'v*'
   pull_request:
     branches:
       - 'main'
+    paths:
+      - 'foswiki/**'
 
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
