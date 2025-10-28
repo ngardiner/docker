@@ -30,7 +30,8 @@ RUN case "$TARGETARCH" in \
       arm) TAILSCALE_ARCH=arm ;; \
       *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
     esac && \
-    curl -fsSL https://pkgs.tailscale.com/stable/tailscale_latest_linux_${TAILSCALE_ARCH}.tgz | tar xzf - --strip-components=1 -C /usr/local/bin/ && \
+    TAILSCALE_VERSION=$(curl -s https://pkgs.tailscale.com/stable/ | grep -o 'tailscale_[0-9]\+\.[0-9]\+\.[0-9]\+_'${TAILSCALE_ARCH}'\.tgz' | head -1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+') && \
+    curl -fsSL https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}.tgz | tar xzf - --strip-components=1 -C /usr/local/bin/ && \
     chmod +x /usr/local/bin/tailscale /usr/local/bin/tailscaled
 
 # Create necessary directories
