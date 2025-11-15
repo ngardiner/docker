@@ -2,12 +2,12 @@ stages:
   - get-versions
   - build
   - release
+  - manual-build
 
 variables:
   DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: "/certs"
-  IMAGE_NAME: "vouch-proxy"
-  DOCKERFILE_PATH: "vouch-proxy/Dockerfile"
+  DOCKER_TLS_CERTDIR: ""  # Disable TLS for kubernetes runner
+  DOCKER_HOST: tcp://docker:2375
 
 # Get all vouch-proxy versions
 get-vouch-versions:
@@ -37,19 +37,22 @@ get-vouch-versions:
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+.*$/
       changes:
         - vouch-proxy/**/*
+  tags:
+    - kubernetes
 
-# Build and push Docker images for all vouch-proxy versions
-docker-build:
+# Build and push vouch-proxy Docker images
+build-vouch-proxy:
   stage: build
   image: docker:24-dind
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      command: ["--tls=false"]
   before_script:
     # Install buildx
     - docker buildx create --use --name multiarch --driver docker-container
     - docker buildx inspect --bootstrap
-    # Login to DockerHub
-    - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+    # Login to Harbor registry
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
   script:
     # Build and push multi-architecture image for each vouch version
     - |
@@ -60,11 +63,11 @@ docker-build:
           echo "Building Docker image for vouch-proxy version: $version"
           
           # Determine tags for this version
-          TAGS="--tag $DOCKERHUB_USERNAME/$IMAGE_NAME:$version"
+          TAGS="--tag $HARBOR_REGISTRY/k3s/vouch-proxy:$version"
           
           # Tag the first (newest) version as latest too
           if [ "$version" = "$FIRST_VERSION" ]; then
-            TAGS="$TAGS --tag $DOCKERHUB_USERNAME/$IMAGE_NAME:latest"
+            TAGS="$TAGS --tag $HARBOR_REGISTRY/k3s/vouch-proxy:latest"
             echo "This version will also be tagged as 'latest'"
           fi
           
@@ -74,10 +77,10 @@ docker-build:
             --build-arg VOUCH_VERSION="$version" \
             $TAGS \
             --push \
-            --file "$DOCKERFILE_PATH" \
+            --file vouch-proxy/Dockerfile \
             vouch-proxy/
           
-          echo "Successfully built and pushed $DOCKERHUB_USERNAME/$IMAGE_NAME:$version"
+          echo "Successfully built and pushed $HARBOR_REGISTRY/k3s/vouch-proxy:$version"
         fi
       done < vouch_versions.txt
       
@@ -90,9 +93,135 @@ docker-build:
       changes:
         - vouch-proxy/**/*
   tags:
-    - docker
+    - kubernetes
   needs:
     - get-vouch-versions
+
+# Build and push cloudflare-proxy Docker image
+build-cloudflare-proxy:
+  stage: build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  before_script:
+    # Install buildx
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+    # Login to Harbor registry
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
+  script:
+    - |
+      # Determine image tags
+      if [[ "$CI_COMMIT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+        TAGS="--tag $HARBOR_REGISTRY/k3s/cloudflared-tunnel-proxy:$CI_COMMIT_TAG --tag $HARBOR_REGISTRY/k3s/cloudflared-tunnel-proxy:latest"
+      elif [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        TAGS="--tag $HARBOR_REGISTRY/k3s/cloudflared-tunnel-proxy:main"
+      else
+        TAGS="--tag $HARBOR_REGISTRY/k3s/cloudflared-tunnel-proxy:$CI_COMMIT_SHORT_SHA"
+      fi
+      
+      # Build and push the image
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        $TAGS \
+        --push \
+        cloudflare_proxy/
+      
+      echo "Successfully built and pushed cloudflare-proxy image"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes:
+        - cloudflare_proxy/**/*
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+.*$/
+      changes:
+        - cloudflare_proxy/**/*
+  tags:
+    - kubernetes
+
+# Build and push cloudflare-tunnel-creator Docker image
+build-cloudflare-tunnel-creator:
+  stage: build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  before_script:
+    # Install buildx
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+    # Login to Harbor registry
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
+  script:
+    - |
+      # Determine image tags
+      if [[ "$CI_COMMIT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+        TAGS="--tag $HARBOR_REGISTRY/k3s/cloudflare-tunnel-creator:$CI_COMMIT_TAG --tag $HARBOR_REGISTRY/k3s/cloudflare-tunnel-creator:latest"
+      elif [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        TAGS="--tag $HARBOR_REGISTRY/k3s/cloudflare-tunnel-creator:main"
+      else
+        TAGS="--tag $HARBOR_REGISTRY/k3s/cloudflare-tunnel-creator:$CI_COMMIT_SHORT_SHA"
+      fi
+      
+      # Build and push the image
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        $TAGS \
+        --push \
+        cloudflare_tunnel_creator/
+      
+      echo "Successfully built and pushed cloudflare-tunnel-creator image"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes:
+        - cloudflare_tunnel_creator/**/*
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+.*$/
+      changes:
+        - cloudflare_tunnel_creator/**/*
+  tags:
+    - kubernetes
+
+# Build and push foswiki Docker image
+build-foswiki:
+  stage: build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  before_script:
+    # Install buildx
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+    # Login to Harbor registry
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
+  script:
+    - |
+      # Determine image tags
+      if [[ "$CI_COMMIT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+        TAGS="--tag $HARBOR_REGISTRY/k3s/foswiki:$CI_COMMIT_TAG --tag $HARBOR_REGISTRY/k3s/foswiki:latest"
+      elif [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        TAGS="--tag $HARBOR_REGISTRY/k3s/foswiki:main"
+      else
+        TAGS="--tag $HARBOR_REGISTRY/k3s/foswiki:$CI_COMMIT_SHORT_SHA"
+      fi
+      
+      # Build and push the image
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        $TAGS \
+        --push \
+        foswiki/
+      
+      echo "Successfully built and pushed foswiki image"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes:
+        - foswiki/**/*
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+.*$/
+      changes:
+        - foswiki/**/*
+  tags:
+    - kubernetes
 
 # Create GitLab release for version tags
 create-release:
@@ -104,50 +233,299 @@ create-release:
     tag_name: $CI_COMMIT_TAG
     name: 'Release $CI_COMMIT_TAG'
     description: |
-      ## Vouch Proxy Docker Image Release $CI_COMMIT_TAG
+      ## Docker Images Release $CI_COMMIT_TAG
       
-      This release provides multi-architecture Docker images for vouch-proxy.
+      This release provides multi-architecture Docker images for all components.
       
       ### Supported Architectures
       - linux/amd64
       - linux/arm64
-      - linux/arm/v7
+      - linux/arm/v7 (vouch-proxy only)
       
       ### Docker Images
-      - `$DOCKERHUB_USERNAME/$IMAGE_NAME:$CI_COMMIT_TAG`
-      - `$DOCKERHUB_USERNAME/$IMAGE_NAME:latest` (for latest release)
+      - `$HARBOR_REGISTRY/k3s/vouch-proxy:$CI_COMMIT_TAG`
+      - `$HARBOR_REGISTRY/k3s/cloudflared-tunnel-proxy:$CI_COMMIT_TAG`
+      - `$HARBOR_REGISTRY/k3s/cloudflare-tunnel-creator:$CI_COMMIT_TAG`
+      - `$HARBOR_REGISTRY/k3s/foswiki:$CI_COMMIT_TAG`
       
-      ### Usage
-      ```bash
-      docker run -p 9090:9090 $DOCKERHUB_USERNAME/$IMAGE_NAME:$CI_COMMIT_TAG
-      ```
-      
-      Built from vouch-proxy version: $CI_COMMIT_TAG
+      All images are also tagged as `latest` for the newest release.
   rules:
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+.*$/
+  tags:
+    - kubernetes
 
-# Test build without pushing (for MRs only)
-test-build:
+# Test build without pushing (for MRs and branches only)
+test-build-vouch-proxy:
   stage: build
   image: docker:24-dind
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      command: ["--tls=false"]
   before_script:
     - docker buildx create --use --name multiarch --driver docker-container
     - docker buildx inspect --bootstrap
   script:
     - |
-      echo "Testing build with latest vouch-proxy version"
+      echo "Testing vouch-proxy build with latest version"
       docker buildx build \
         --platform linux/amd64,linux/arm64,linux/arm/v7 \
         --build-arg VOUCH_VERSION="latest" \
-        --tag "test-$IMAGE_NAME:$CI_COMMIT_SHORT_SHA" \
-        --file "$DOCKERFILE_PATH" \
+        --tag "test-vouch-proxy:$CI_COMMIT_SHORT_SHA" \
+        --file vouch-proxy/Dockerfile \
         vouch-proxy/
-      echo "Test build completed successfully"
+      echo "Vouch-proxy test build completed successfully"
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - vouch-proxy/**/*
   tags:
-    - docker
+    - kubernetes
+
+test-build-cloudflare-proxy:
+  stage: build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  before_script:
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+  script:
+    - |
+      echo "Testing cloudflare-proxy build"
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "test-cloudflare-proxy:$CI_COMMIT_SHORT_SHA" \
+        cloudflare_proxy/
+      echo "Cloudflare-proxy test build completed successfully"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - cloudflare_proxy/**/*
+  tags:
+    - kubernetes
+
+test-build-cloudflare-tunnel-creator:
+  stage: build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  before_script:
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+  script:
+    - |
+      echo "Testing cloudflare-tunnel-creator build"
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "test-cloudflare-tunnel-creator:$CI_COMMIT_SHORT_SHA" \
+        cloudflare_tunnel_creator/
+      echo "Cloudflare-tunnel-creator test build completed successfully"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - cloudflare_tunnel_creator/**/*
+  tags:
+    - kubernetes
+
+test-build-foswiki:
+  stage: build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  before_script:
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+  script:
+    - |
+      echo "Testing foswiki build"
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "test-foswiki:$CI_COMMIT_SHORT_SHA" \
+        foswiki/
+      echo "Foswiki test build completed successfully"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - foswiki/**/*
+  tags:
+    - kubernetes
+
+# Manual trigger jobs - can be run from GitLab UI on any branch
+manual-build-vouch-proxy:
+  stage: manual-build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    MANUAL_TAG: "${MANUAL_TAG:-manual-$CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
+  script:
+    - |
+      echo "Manual build for vouch-proxy with tag: $MANUAL_TAG"
+      # Get latest vouch version
+      LATEST_VERSION=$(curl -s "https://api.github.com/repos/vouch/vouch-proxy/tags" | \
+        grep -o '"name": "v[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Using vouch-proxy version: $LATEST_VERSION"
+      
+      docker buildx build \
+        --platform linux/amd64,linux/arm64,linux/arm/v7 \
+        --build-arg VOUCH_VERSION="$LATEST_VERSION" \
+        --tag "$HARBOR_REGISTRY/k3s/vouch-proxy:$MANUAL_TAG" \
+        --push \
+        vouch-proxy/
+      
+      echo "Successfully built and pushed $HARBOR_REGISTRY/k3s/vouch-proxy:$MANUAL_TAG"
+  when: manual
+  allow_failure: true
+  tags:
+    - kubernetes
+
+manual-build-cloudflare-proxy:
+  stage: manual-build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    MANUAL_TAG: "${MANUAL_TAG:-manual-$CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
+  script:
+    - |
+      echo "Manual build for cloudflare-proxy with tag: $MANUAL_TAG"
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "$HARBOR_REGISTRY/k3s/cloudflared-tunnel-proxy:$MANUAL_TAG" \
+        --push \
+        cloudflare_proxy/
+      
+      echo "Successfully built and pushed $HARBOR_REGISTRY/k3s/cloudflared-tunnel-proxy:$MANUAL_TAG"
+  when: manual
+  allow_failure: true
+  tags:
+    - kubernetes
+
+manual-build-cloudflare-tunnel-creator:
+  stage: manual-build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    MANUAL_TAG: "${MANUAL_TAG:-manual-$CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
+  script:
+    - |
+      echo "Manual build for cloudflare-tunnel-creator with tag: $MANUAL_TAG"
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "$HARBOR_REGISTRY/k3s/cloudflare-tunnel-creator:$MANUAL_TAG" \
+        --push \
+        cloudflare_tunnel_creator/
+      
+      echo "Successfully built and pushed $HARBOR_REGISTRY/k3s/cloudflare-tunnel-creator:$MANUAL_TAG"
+  when: manual
+  allow_failure: true
+  tags:
+    - kubernetes
+
+manual-build-foswiki:
+  stage: manual-build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    MANUAL_TAG: "${MANUAL_TAG:-manual-$CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
+  script:
+    - |
+      echo "Manual build for foswiki with tag: $MANUAL_TAG"
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "$HARBOR_REGISTRY/k3s/foswiki:$MANUAL_TAG" \
+        --push \
+        foswiki/
+      
+      echo "Successfully built and pushed $HARBOR_REGISTRY/k3s/foswiki:$MANUAL_TAG"
+  when: manual
+  allow_failure: true
+  tags:
+    - kubernetes
+
+# Manual build all components at once
+manual-build-all:
+  stage: manual-build
+  image: docker:24-dind
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    MANUAL_TAG: "${MANUAL_TAG:-manual-$CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - apk add --no-cache curl jq
+    - docker buildx create --use --name multiarch --driver docker-container
+    - docker buildx inspect --bootstrap
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_REGISTRY"
+  script:
+    - |
+      echo "Manual build for ALL components with tag: $MANUAL_TAG"
+      
+      # Get latest vouch version
+      LATEST_VERSION=$(curl -s "https://api.github.com/repos/vouch/vouch-proxy/tags" | \
+        grep -o '"name": "v[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Using vouch-proxy version: $LATEST_VERSION"
+      
+      # Build vouch-proxy
+      echo "Building vouch-proxy..."
+      docker buildx build \
+        --platform linux/amd64,linux/arm64,linux/arm/v7 \
+        --build-arg VOUCH_VERSION="$LATEST_VERSION" \
+        --tag "$HARBOR_REGISTRY/k3s/vouch-proxy:$MANUAL_TAG" \
+        --push \
+        vouch-proxy/
+      
+      # Build cloudflare-proxy
+      echo "Building cloudflare-proxy..."
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "$HARBOR_REGISTRY/k3s/cloudflared-tunnel-proxy:$MANUAL_TAG" \
+        --push \
+        cloudflare_proxy/
+      
+      # Build cloudflare-tunnel-creator
+      echo "Building cloudflare-tunnel-creator..."
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "$HARBOR_REGISTRY/k3s/cloudflare-tunnel-creator:$MANUAL_TAG" \
+        --push \
+        cloudflare_tunnel_creator/
+      
+      # Build foswiki
+      echo "Building foswiki..."
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag "$HARBOR_REGISTRY/k3s/foswiki:$MANUAL_TAG" \
+        --push \
+        foswiki/
+      
+      echo "Successfully built and pushed ALL components with tag: $MANUAL_TAG"
+  when: manual
+  allow_failure: true
+  tags:
+    - kubernetes

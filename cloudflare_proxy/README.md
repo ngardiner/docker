@@ -58,6 +58,39 @@ TAILSCALE_ACCEPT_ROUTES=false  # Whether to accept routes advertised by other no
 TAILSCALE_ACCEPT_DNS=false  # Whether to use Tailscale DNS
 ```
 
+### Docker Requirements for Tailscale
+
+**Important**: For Tailscale to work properly in the container, the following Docker configuration is required:
+
+#### Required Capabilities and Privileges
+The container needs elevated privileges to access the TUN interface:
+- `NET_ADMIN` - Required for network administration
+- `SYS_MODULE` - Required for kernel module operations  
+- `NET_RAW` - Required for raw network access
+- `privileged: true` - Required for full TUN device access
+
+#### Device Mapping
+The TUN device must be mapped into the container:
+```yaml
+devices:
+  - /dev/net/tun:/dev/net/tun
+volumes:
+  - /dev/net/tun:/dev/net/tun
+```
+
+#### Host Requirements
+Ensure the TUN module is loaded on your host system:
+```bash
+# Check if TUN module is loaded
+lsmod | grep tun
+
+# Load TUN module if not present
+sudo modprobe tun
+
+# Verify TUN device exists
+ls -la /dev/net/tun
+```
+
 ## Getting Started
 
 ### For Cloudflare Mode
@@ -88,6 +121,87 @@ Configurations for cloudflared and haproxy are stored within the respective conf
 Once you have updated the configurations, you can trigger a reload of the service with the following command, whilst inside the configuration directory for that service:
 
 ```touch .reload```
+
+## Troubleshooting
+
+### Tailscale Issues
+
+#### Error: "CreateTUN failed; /dev/net/tun does not exist"
+This indicates the container cannot access the TUN device. Ensure:
+
+1. **Host has TUN support**:
+   ```bash
+   # Check if TUN module is loaded
+   lsmod | grep tun
+   
+   # If not loaded, load it
+   sudo modprobe tun
+   
+   # Make it persistent across reboots
+   echo 'tun' | sudo tee -a /etc/modules
+   ```
+
+2. **Container has proper privileges**:
+   ```yaml
+   # In docker-compose.yml
+   privileged: true
+   cap_add:
+     - NET_ADMIN
+     - SYS_MODULE  
+     - NET_RAW
+   devices:
+     - /dev/net/tun:/dev/net/tun
+   ```
+
+3. **Verify TUN device exists**:
+   ```bash
+   ls -la /dev/net/tun
+   # Should show: crw-rw-rw- 1 root root 10, 200 <date> /dev/net/tun
+   ```
+
+#### Error: "netlink receive: operation not permitted"
+This usually indicates insufficient container privileges. Ensure `privileged: true` is set in your Docker Compose configuration.
+
+#### Error: "failed to connect to local tailscaled"
+The Tailscale daemon may not be starting properly. Check:
+
+1. **Container logs**:
+   ```bash
+   docker-compose logs -f tunnel-proxy
+   ```
+
+2. **Verify environment variables**:
+   - `TAILSCALE_ENABLE=true`
+   - `TAILSCALE_AUTHKEY` is set and valid
+   - `PROXY_MODE=tailscale` or `PROXY_MODE=hybrid`
+
+3. **Check if tailscaled process is running**:
+   ```bash
+   docker-compose exec tunnel-proxy pgrep tailscaled
+   ```
+
+### General Debugging
+
+#### Check Container Health
+```bash
+# View container health status
+docker-compose ps
+
+# Check detailed logs
+docker-compose logs -f tunnel-proxy
+
+# Execute commands inside container
+docker-compose exec tunnel-proxy bash
+```
+
+#### Verify Network Connectivity
+```bash
+# Test Tailscale connectivity (from inside container)
+docker-compose exec tunnel-proxy tailscale status
+
+# Test Cloudflare tunnel (from inside container)  
+docker-compose exec tunnel-proxy cloudflared tunnel info $TUNNEL_ID
+```
 
 ## Uses
 
